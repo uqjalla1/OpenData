@@ -1,0 +1,120 @@
+---
+title: "Tidy Coral"
+author: "James Allan"
+---
+
+```{r setup, warning=FALSE, message=false}
+# install libraries
+library(tidyverse) #install.packages("tidyverse")
+library(janitor) #install.packages("janitor")
+library(skimr) #install.packages("skimr")
+library(stringr) #install.packages("stringr")
+
+## data filepaths/urls ----
+
+## benthic data
+benthic_url <- 'https://www.nodc.noaa.gov/archive/arc0054/0104255/1.1/data/0-data/cd08/100308OaAla03m.CSV'
+
+## buoy data
+buoy_url <- 'http://www.ndbc.noaa.gov/view_text_file.php?filename=mokh1h2010.txt.gz&dir=data/historical/stdmet/'
+```
+
+#Read in benthic data
+```{r benthic raw}
+benthic_raw <- read_csv(benthic_url)
+head(benthic_raw)
+
+```
+
+#Wrangle
+```{r wrangle}
+# wrangle time
+## the `janitor` package's `clean_names` function
+benthic <- benthic_raw %>%
+  janitor::clean_names() #this simply says the clean_names fn comes from the janitor package this is good practice to do this id you dont immediately know the package
+
+head(benthic)   
+names(benthic)
+
+#select our columns
+benthic <- benthic %>%
+  select(id_name, point, x, y, id_date)
+  
+benthic <- benthic %>%
+  mutate(date = stringr::str_remove_all(id_date, "#"))
+summary(benthic)
+
+skimr::skim(benthic)
+   
+unique(benthic$id_name)         
+
+ggplot(benthic, aes(date, fill = id_name)) +
+         geom_bar()
+```
+
+#Buoy data
+
+```{r buoy data}
+
+#import buoy data
+
+#this doesnt work because not comma separated
+buoy <- readr::read_csv(buoy_url)
+head(buoy) # hmm this doesn't look right! Why not?
+
+## read_table
+buoy_raw <- read_table(buoy_url)
+head(buoy) ## still not quite right -- missed some columns.
+
+## read_table2
+buoy_raw <- read_table2(buoy_url)
+head(buoy_raw) ## this is what we need!
+```
+
+#Wrangle
+```{r wrangle}
+buoy <- buoy_raw
+
+## 1. overwrite column names
+names(buoy) <- str_c(names(buoy),                  ## current header
+                  buoy %>% filter(`#YY` == "#yr"), ## row1 -- don't say buoy[1,] 
+                  sep = "_")                       ## separate by `_`
+
+## inspect
+names(buoy) ## Looks a lot better
+
+## 2. clean up a bit more to get rid of the `#`s and the `/`s. 
+names(buoy) <- str_replace_all(names(buoy), "#", "")  # replace `#` with nothing 
+names(buoy) <- str_replace_all(names(buoy), "/", "_") # replace `/` with `_`
+
+## inspect to make sure it worked
+names(buoy)
+
+# remove rendundant row
+buoy <- buoy %>%
+  filter(`YY_yr` != "#yr")
+head(buoy)
+```
+
+#Explore
+```{r}
+ggplot(buoy, aes(WTMP_degC)) +
+  geom_bar()
+
+head(benthic)
+head(buoy)
+
+buoy <- buoy %>%
+  unite(date, c(YY_yr, MM_mo, DD_dy), sep = "-")
+
+head(buoy)
+
+#left join benthic by date
+bb_join <- benthic %>%
+  left_join(buoy, by = "date")
+
+bb_join %>%
+  select(id_name, x, y, date, hh_hr, mm_mn, WTMP_degC) %>%
+  head()
+```
+
